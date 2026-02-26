@@ -1,0 +1,109 @@
+{
+  "telegram": {
+    "token": "8222176205:AAFnd01zBleDoUO0tyc071ulyw021l7E2-c",
+    "chat_id": "-1003855083843"
+  },
+  "runtime": {
+    "main_loop_poll_sec": 1,
+    "quote": "USDT",
+    "test_mode": false
+  },
+  "exchanges": {
+    "enabled": [
+      "binance",
+      "phemex",
+      "kucoin",
+      "bitget"
+    ]
+  },
+  "engine": {
+    "funding": {
+      "enabled": true,
+      "min_spread": 0.15,
+      "ttl_sec_control": null
+    },
+    "price": {
+      "enabled": true,
+      "price_spread_weight": 1.0,
+      "total_spread": 0.15,
+      "ttl_sec_control": null
+    },
+    "price2": {
+      "enabled": true,
+      "total_spread": 0.7
+    }
+  },
+  "dedup": {
+    "signal_after_funding_sec": null
+  },
+  "scheduler": {
+    "marks_1h": {
+      "val_sec": 900,
+      "offset_sec": 0,
+      "repeat": [
+        3,
+        180
+      ]
+    },
+    "marks_4h": {
+      "val_sec": 3600,
+      "offset_sec": 0,
+      "repeat": [
+        6,
+        300
+      ]
+    },
+    "marks_8h": {
+      "val_sec": 5400,
+      "offset_sec": 0,
+      "repeat": [
+        3,
+        600
+      ]
+    },
+    "phemex_top_funding": {
+      "val_sec": 1800,
+      "offset_sec": 0,
+      "repeat": [
+        1,
+        300
+      ]
+    },
+    "kucoin_top_funding": {
+      "val_sec": 1800,
+      "offset_sec": 0,
+      "repeat": [
+        1,
+        300
+      ]
+    }
+  },
+  "logging": {
+    "debug": true,
+    "info": true,
+    "warning": true,
+    "error": true,
+    "max_log_lines": 2000,
+    "time_zone": "UTC",
+    "http": false,
+    "http_bodies": false
+  },
+  "precision": {
+    "funding_rate": 6,
+    "spread_pct": 6,
+    "default": 6,
+    "decimal_context_prec": 28
+  },
+  "notifications": {
+    "phemex_top_funding": {
+      "enabled": true,
+      "min_funding": 0.2,
+      "slice": 20
+    },
+    "kucoin_top_funding": {
+      "enabled": true,
+      "min_funding": 1.8,
+      "slice": 20
+    }
+  }
+}
