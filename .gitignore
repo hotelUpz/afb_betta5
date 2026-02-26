@@ -4,3 +4,5 @@ __pycache__/
 .env
 *.log
 .DS_Store
+ssh_key.pub
+ssh_key.txt
