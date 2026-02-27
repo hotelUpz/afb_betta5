@@ -265,6 +265,7 @@ class FundingArbBot:
         # active candidates
         self._candidates: Dict[str, Candidate] = {}
         self._cand_diag_next_log_ms: int = 0
+        self._symbols_dump_skip_logged: bool = False
 
     def _resolve_enabled_exchange_keys(self) -> list[str]:
         enabled_order = [str(x).strip().lower() for x in (ENABLED_EXCHANGES or []) if str(x).strip()]
@@ -349,7 +350,9 @@ class FundingArbBot:
         if str(RUN_MODE).strip().lower() != "prod":
             dump_symbols_struct(struct=self.raw_symbols_struct, universe=u, logger=self.logger)
         else:
-            self.logger.debug("[SYMBOLS] skip OUT JSON dump in prod mode")
+            if not self._symbols_dump_skip_logged:
+                self.logger.debug("[SYMBOLS] skip OUT JSON dump in prod mode")
+                self._symbols_dump_skip_logged = True
 
         # logging summary
         self.logger.info(f"[SYMBOLS] quote={u.quote}")
@@ -566,7 +569,17 @@ class FundingArbBot:
             ttf_max_sec=ttf_max,
         )
         opps_raw_count = len(opps)
-        opps = self._filter_opps_by_min_pair_interval(opps, gate_h=int(gate_h))
+
+        # IMPORTANT:
+        # Do NOT route/drop opportunities by adapter-declared leg interval.
+        # Gate eligibility is determined by the actual TTF window of this scan
+        # plus per-pair nextFunding sync inside FundingEngine.
+        #
+        # Example: BINANCE/PHEMEX adapters can report default 8h interval metadata,
+        # while a concrete symbol still has nextFundingTime inside the current 1h gate window.
+        # Filtering by "gate_h in leg_intervals" here suppresses real pairs before they ever
+        # reach candidates/signals.
+        opps = list(opps)
 
         top = opps[:10]
         uniq_canon = len({o.canon for o in opps})
@@ -578,7 +591,7 @@ class FundingArbBot:
             _sched_kind = None
         self.logger.info(
             f"[SCAN] gate={gate_h}h({(_sched_kind or 'n/a')}): opps={len(opps)} pairs / {uniq_canon} symbols"
-            f" (raw={opps_raw_count}, minIntervalFiltered={max(0, opps_raw_count - len(opps))}) | "
+            f" (raw={opps_raw_count}, intervalRouteFiltered=0) | "
             f"PRE>= {float(FUNDING_SPREAD):.4f}% | next-sync<= {int(NEXT_FUNDING_SYNC_SEC)}s | "
             f"fundingSource={self._funding_source_mode} | maxFundingAge={self._max_funding_age_sec:.1f}s | "
             f"ttf=[{ttf_min},{ttf_max}]"
@@ -671,24 +684,18 @@ class FundingArbBot:
         return min(vals) if vals else None
 
     def _filter_opps_by_min_pair_interval(self, opps: list[Opportunity], gate_h: int) -> list[Opportunity]:
-        """Gate routing filter for opportunities.
+        """Compatibility shim: interval-based routing is intentionally disabled.
 
-        Previous behavior allowed a pair only on the gate equal to the *minimum* leg interval.
-        That suppresses valid mixed-interval pairs (e.g. 4h+8h) on the 8h gate, which users can
-        legitimately want to see when the shared next funding event is in the 8h scan window.
+        Why:
+          - adapter interval metadata is not a reliable eligibility signal for a concrete
+            cross-exchange funding event
+          - scanner already filters by the *actual* TTF window for the current gate
+          - FundingEngine already enforces per-pair nextFunding sync tolerance
 
-        New behavior:
-          - if no interval metadata is available -> keep the pair (don't guess/drop)
-          - otherwise keep the pair when the current gate matches *any* leg interval
-        De-dup logic still protects from duplicate notifications for the same funding bucket.
+        So an opportunity that exists in ``opps`` is already eligible for this gate.
+        Dropping it here by declared leg interval can hide real pairs (notably BINANCE↔PHEMEX).
         """
-        out: list[Opportunity] = []
-        gh = int(gate_h)
-        for o in opps:
-            legs = self._pair_leg_intervals_from_opp(o)
-            if (not legs) or (gh in legs):
-                out.append(o)
-        return out
+        return list(opps)
 
     def _pair_interval_signature(self, c: Candidate) -> str:
         lh = self._resolve_leg_interval_hours(c.long_ex, c.long_raw, c.canon)

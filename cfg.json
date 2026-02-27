@@ -30,7 +30,7 @@
     },
     "price2": {
       "enabled": true,
-      "total_spread": 0.8
+      "total_spread": 1.0
     }
   },
   "dedup": {

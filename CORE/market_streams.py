@@ -11,6 +11,9 @@ import time
 from dataclasses import dataclass
 from typing import Any, Dict, Optional, Set, Tuple
 
+
+PRICE_STREAM_SHRINK_IDLE_SEC = 180  # avoid stream churn / stale-price resets on fast candidate-set shrink
+
 from c_log import UnifiedLogger
 
 from API.BINANCE.price import BinanceHotPriceStream
@@ -32,6 +35,7 @@ class _Handle:
     symbols: Set[str]
     stream: Any
     task: asyncio.Task
+    changed_at_ms: int
 
 
 class MarketStreams:
@@ -259,14 +263,34 @@ class MarketStreams:
 
     async def _ensure_price(self, ex: str, want: Set[str]) -> None:
         cur = self._price_handles.get(ex)
-        if cur and cur.symbols == want:
-            return
+        now_ms = int(time.time() * 1000)
+
         if cur:
+            if cur.symbols == want:
+                return
+
+            # Important production guard:
+            # candidate sets often shrink one-by-one immediately after signals / failures.
+            # Restarting WS streams on every shrink resets hot price caches and causes
+            # artificial "stale price data" on the remaining candidates.
+            #
+            # So we do NOT restart on fast shrink. We keep the current superset warm and
+            # only allow a shrink after a quiet idle period. Growth still applies immediately.
+            if want.issubset(cur.symbols):
+                idle_ms = now_ms - int(getattr(cur, "changed_at_ms", 0) or 0)
+                if idle_ms < int(PRICE_STREAM_SHRINK_IDLE_SEC * 1000):
+                    return
+            new_symbols = set(cur.symbols) | set(want)
+            if want.issubset(cur.symbols) and (now_ms - int(getattr(cur, "changed_at_ms", 0) or 0) >= int(PRICE_STREAM_SHRINK_IDLE_SEC * 1000)):
+                new_symbols = set(want)
+            if new_symbols == cur.symbols:
+                return
             await self._stop_handle(cur, label=f"{ex} price")
+            want = new_symbols
 
         stream = self._make_price_stream(ex, want)
         task = asyncio.create_task(stream.run(lambda t, _ex=ex: self._on_price(_ex, t)))
-        self._price_handles[ex] = _Handle(symbols=want, stream=stream, task=task)
+        self._price_handles[ex] = _Handle(symbols=want, stream=stream, task=task, changed_at_ms=now_ms)
         self.logger.info(f"[WS] started {ex} price stream for {len(want)} symbols")
 
     async def _ensure_stakan(self, ex: str, want: Set[str]) -> None:

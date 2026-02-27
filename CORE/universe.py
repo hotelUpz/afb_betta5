@@ -156,8 +156,10 @@ class UniverseBuilder:
                     except Exception:
                         interval_h = 8
 
-                # Keep only supported funding intervals for scheduler/scanner.
-                # 12h/24h and other exotic values are intentionally filtered out.
+                # This interval map is DIAGNOSTIC / labeling metadata only.
+                # Real scan eligibility is decided later by actual nextFundingTime/TTF,
+                # not by this declared adapter interval.
+                # Keep only supported display buckets.
                 if interval_h not in {1, 4, 8}:
                     continue
 

@@ -115,7 +115,7 @@ class UnifiedLogger:
 
     def info(self, msg: str, *args, **kwargs):
         if LOG_INFO:
-            # print(msg)
+            print(msg)
             self._logger.info(msg, *args, **kwargs)
 
     def warning(self, msg: str, *args, **kwargs):
