@@ -373,6 +373,46 @@ class FundingArbBot:
     def _cand_key(canon: str, long_ex: str, short_ex: str) -> str:
         return f"{canon}|{long_ex}|{short_ex}"
 
+    @staticmethod
+    def _funding_bucket_min(next_funding_time_ms: int) -> int:
+        try:
+            x = int(next_funding_time_ms)
+        except Exception:
+            x = 0
+        return (x // 60_000) if x > 0 else 0
+
+    def _reset_candidate_for_new_bucket(self, c: Candidate) -> None:
+        """Reset volatile per-event state when the same pair rolls into a new funding bucket.
+
+        Important: candidate identity is pair-based (canon + long_ex + short_ex),
+        so without this reset a previously signaled pair can stay permanently blocked
+        while scans continue to refresh last_seen_ms for the same key.
+        """
+        c.pair_ok_since_ms = 0
+        c.price_ok_since_ms = 0
+        c.stakan_ok_since_ms = 0
+        c.last_price_component_pct = 0.0
+        c.last_total_spread_pct = 0.0
+        c.last_price2_price_component_pct = 0.0
+        c.last_price2_total_spread_pct = 0.0
+        c.last_pre_total_funding_spread_live_pct = 0.0
+        c.last_fail_reason = ""
+        c.state = "NEW"
+        c.signaled = False
+        c.last_signal_kind = "PRIMARY"
+        c.ttl_anchor_funding_sig = ""
+        c.signal_sent_ms = 0
+        c.repeat_done_count = 0
+        c.repeat_next_ms = 0
+        c.last_signal_message = ""
+
+    def _scan_bundle_counts(self, opps: list[Opportunity]) -> dict[str, int]:
+        counts: dict[str, int] = {}
+        for o in opps:
+            key = f"{str(o.long_ex).upper()}>{str(o.short_ex).upper()}"
+            counts[key] = counts.get(key, 0) + 1
+        return counts
+
     def _add_candidates(self, opps: list[Opportunity], gate_h: int) -> None:
         if not self.universe:
             return
@@ -389,6 +429,18 @@ class FundingArbBot:
             key = self._cand_key(o.canon, o.long_ex, o.short_ex)
             prev = self._candidates.get(key)
             if prev:
+                prev_bucket = self._funding_bucket_min(prev.next_funding_time_ms)
+                new_bucket = self._funding_bucket_min(o.next_funding_time_ms)
+                bucket_changed = bool(prev_bucket and new_bucket and prev_bucket != new_bucket)
+                if bucket_changed:
+                    self._reset_candidate_for_new_bucket(prev)
+                    try:
+                        self.logger.debug(
+                            f"[CAND] new funding bucket -> reset state for {o.canon} {o.long_ex}>{o.short_ex} "
+                            f"{prev_bucket}->{new_bucket}"
+                        )
+                    except Exception:
+                        pass
                 prev.last_seen_ms = now_ms
                 prev.funding_long_pct = o.long_rate_pct
                 prev.funding_short_pct = o.short_rate_pct
@@ -531,6 +583,10 @@ class FundingArbBot:
             f"fundingSource={self._funding_source_mode} | maxFundingAge={self._max_funding_age_sec:.1f}s | "
             f"ttf=[{ttf_min},{ttf_max}]"
         )
+        bundle_counts = self._scan_bundle_counts(opps)
+        if bundle_counts:
+            parts = ", ".join(f"{k}={v}" for k, v in sorted(bundle_counts.items()))
+            self.logger.debug(f"[SCAN-BUNDLES] gate={gate_h}h {parts}")
         for o in top:
             self.logger.info("  " + self._format_opp(o))
 

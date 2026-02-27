@@ -19,18 +19,18 @@
   "engine": {
     "funding": {
       "enabled": true,
-      "min_spread": 0.15,
+      "min_spread": 0.3,
       "ttl_sec_control": null
     },
     "price": {
       "enabled": true,
       "price_spread_weight": 1.0,
-      "total_spread": 0.15,
+      "total_spread": 0.25,
       "ttl_sec_control": null
     },
     "price2": {
       "enabled": true,
-      "total_spread": 0.7
+      "total_spread": 0.8
     }
   },
   "dedup": {
